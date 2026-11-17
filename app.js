@@ -1,0 +1,62 @@
+const TITLE='27년도 수능 감독관의 삶';
+const SITE='https://gwonsu829-gif.github.io/proctor-dilemma';
+const app=document.getElementById('app');
+let phase='home',branch=0,outcome=0,final=0,started=0,sound=false,audio,toastTimer;
+let collected=[];try{collected=JSON.parse(localStorage.getItem('proctor-endings-v1')||'[]');if(!Array.isArray(collected))collected=[]}catch{}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function beep(kind='click'){if(!sound)return;try{audio??=new(window.AudioContext||window.webkitAudioContext)();audio.resume();let o=audio.createOscillator(),g=audio.createGain();o.connect(g);g.connect(audio.destination);o.type=kind==='stamp'?'sawtooth':'sine';o.frequency.setValueAtTime(kind==='stamp'?100:660,audio.currentTime);o.frequency.exponentialRampToValueAtTime(80,audio.currentTime+.12);g.gain.setValueAtTime(.07,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.17);o.start();o.stop(audio.currentTime+.18)}catch{}}
+document.getElementById('sound').onclick=()=>{sound=!sound;const el=document.getElementById('sound');el.textContent='소리 '+(sound?'ON':'OFF');el.setAttribute('aria-pressed',sound);el.setAttribute('aria-label','효과음 '+(sound?'끄기':'켜기'));beep()};
+function scene(){return '';}
+function mount(html,focus=true){app.innerHTML=html;document.body.dataset.phase=phase;window.dispatchEvent(new CustomEvent('view-state',{detail:{phase,branch}}));window.dispatchEvent(new CustomEvent('game-phase',{detail:phase}));app.firstElementChild?.classList.add('enter');if(focus){window.scrollTo({top:0,behavior:'instant'});const h=app.querySelector('h1,h2');if(h){h.setAttribute('tabindex','-1');h.focus({preventScroll:true})}}}
+function home(){phase='home';let shared=new URLSearchParams(location.search).get('ending');let id=/^\d{1,2}$/.test(shared||'')?Number(shared):-1;if(id>=0&&id<72)setScenario(endingInfo(id).scenario.id);let challenge=id>=0&&id<72?`<div class="challenge">친구의 결말: <b>${esc(endingInfo(id).scenario.label+' · '+endingInfo(id).title)}</b><br>같은 상황이라면, 나는 어떻게 할까?</div>`:'';mount(`<section class="hero"><div class="hero-text">${challenge}<div class="eyebrow"><span class="dot"></span> 속보 · 올해 수능부터 AI 안경 반입 금지</div><h1>27년도 수능<br><em>감독관의 삶</em></h1><p class="lede">모든 안경을 매 교시 점검하래요.<br>그런데 수능냥이 안경이 반짝인다.<br><strong>확인해도 고소, 안 해도 고소.</strong></p><div class="chips"><span class="chip">약 1분</span><span class="chip">72가지 결말</span><span class="chip">가입 없이 바로</span></div><button class="primary" id="start">감독관으로 출근하기 <span>→</span></button><div class="small-note">감독하러 왔는데, 왜 내가 고소장을 받지?</div></div>${scene()}</section><div class="rule-strip"><span><b>01</b> 수상한 장면 발견</span><span>→</span><span><b>02</b> 어떻게 할까?</span><span>→</span><span><b>03</b> 무사히 퇴근…?</span></div>${collected.length?`<div class="small-note">내가 발견한 결말 ${new Set(collected).size} / 72 · 이 기기에 저장됩니다</div>`:''}`);document.getElementById('start').onclick=()=>{started=Date.now();beep();initial()}}
+function bar(step){return `<div class="game-bar"><span>감독일지 / 제03시험실</span><div class="steps" aria-label="${step}/3 단계">${[1,2,3].map(i=>`<i class="${i<=step?'active':''}"></i>`).join('')}</div><span>${step} / 3</span></div>`}
+function choices(opts){return `<div class="choices">${opts.map((o,i)=>`<button class="choice" data-choice="${i}"><span class="key">${i+1}</span><span class="txt">${esc(o.label)}${o.hint?`<small>${esc(o.hint)}</small>`:''}</span><span class="arrow">↗</span></button>`).join('')}</div>`}
+function bind(fn){app.querySelectorAll('[data-choice]').forEach(el=>el.onclick=()=>{beep();fn(Number(el.dataset.choice))})}
+function initial(){phase='initial';mount(`<section class="game">${bar(1)}${scene()}<div class="story"><div class="kicker">상황 발생 · 09:07</div><h2>${esc(activeScenario.title)}</h2><p>${esc(activeScenario.body).replace(/\n/g,'<br>')}</p></div>${choices(BRANCHES)}<p class="progress-note">확인하자니 조심스럽고, 그냥 넘기자니 찜찜하다.</p></section>`);bind(i=>{branch=i;middle()})}
+function middle(){phase='middle';let b=BRANCHES[branch];mount(`<section class="game">${bar(2)}${scene(b.id)}<div class="story"><div class="kicker">내 선택 · ${esc(b.label)}</div><h2>${esc(b.scene)}</h2><div class="quote">${esc(b.quote)}<small>— ${esc(b.speaker)}</small></div><p>${esc(b.body)}</p></div>${choices(b.options)}<p class="progress-note">말 한마디만 잘하면 풀릴지도 모른다.</p></section>`);bind(i=>{outcome=i;last()})}
+function last(){phase='last';let o=BRANCHES[branch].options[outcome];mount(`<section class="game">${bar(3)}${scene(BRANCHES[branch].id)}<div class="story"><div class="kicker">마지막으로 한마디</div><h2>이제 뭐라고 해야 하지?</h2><div class="quote">${esc(o.quote)}<small>— 돌아온 말</small></div><p>내가 한 일: ${esc(o.evidence)}<br>설명하면 풀릴까? 더 말하면 일이 커질까?</p></div>${choices(FINALS)}<p class="progress-note">마지막으로 어떻게 할까?</p></section>`);bind(i=>{final=i;result()})}
+function current(){return BRANCHES[branch].options[outcome]}
+function endingId(){return SCENARIOS.findIndex(s=>s.id===activeScenario.id)*24+branch*6+outcome*2+final}
+function result(){phase='result';const o=current(),id=endingId();if(!collected.includes(id))collected.push(id);try{localStorage.setItem('proctor-endings-v1',JSON.stringify(collected))}catch{}beep('stamp');mount(`<section class="result"><div class="result-top">결국 고소장이 접수됐다.</div><article class="document" aria-label="가상의 고소 엔딩 결과"><div class="doc-head"><span>27년도 수능 감독관의 삶</span><span>사건 ${String(id+1).padStart(2,'0')} / 72</span></div><h1>${esc(o.title)}</h1><div class="stamp">고소 엔딩</div><div class="label">내가 한 행동 · ${esc(activeScenario.label)}</div><div class="evidence">${esc(o.evidence)}</div><div class="label">접수된 고소 사유</div><div class="charge">${esc(o.charge)}</div><p class="explain">${esc(o.reply)}</p><div class="final-quote">${esc(FINALS[final].quote)}<p class="explain">${esc(FINALS[final].note)}</p></div><div class="doc-bottom"><span>피고소인: 시험 감독관(나)</span><span>퇴근: 보류</span></div></article><div class="result-actions"><button class="primary" id="share">친구에게 결과 보내기 ↗</button><div class="action-row"><button class="secondary" id="save">결과 카드 저장 ↓</button><button class="secondary" id="retry">다른 선택 해보기 ↻</button></div><div class="action-row"><button class="secondary" id="copy-link">결과 링크 복사</button><button class="secondary" id="change-student">다른 학생 살펴보기</button></div><button class="secondary" id="replay-ending">무너지는 내 모습 다시 보기 ↻</button></div><p class="small-note">나는 이렇게 했는데… 너라면 어떻게 할래?</p><details class="collection"><summary>발견한 결말 ${new Set(collected).size} / 72 <span style="font-weight:400;color:var(--muted)">· 이 기기에 저장</span></summary><div class="ending-grid">${Array.from({length:72},(_,n)=>`<div class="ending-cell ${collected.includes(n)?'found':''}">${String(n+1).padStart(2,'0')} ${collected.includes(n)?esc(endingInfo(n).scenario.label+' · '+endingInfo(n).title):'미발견'}${collected.includes(n)?`<br><small>${FINALS[endingInfo(n).final].suffix}</small>`:''}</div>`).join('')}</div></details></section>`);document.getElementById('share').onclick=share;document.getElementById('save').onclick=save;document.getElementById('retry').onclick=()=>{beep();started=Date.now();initial()};document.getElementById('copy-link').onclick=()=>copy(resultUrl(),'결과 링크를 복사했어요. 친구에게 보내주세요.');document.getElementById('change-student').onclick=roam;document.getElementById('replay-ending').onclick=()=>window.dispatchEvent(new Event('replay-ending'))}
+function resultUrl(){let origin=location.protocol==='file:'?SITE:location.origin;return origin+'/?ending='+endingId()}
+function shareText(){return `${TITLE}\n상황: ${activeScenario.label}\n내가 한 일: ${current().evidence}\n결말: ${current().title} (${current().charge})\n나는 이렇게 했는데 고소당함. 너라면 어떻게 할래?\n${resultUrl()}`}
+function toast(msg){clearTimeout(toastTimer);let t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');toastTimer=setTimeout(()=>t.classList.remove('show'),3200)}
+async function copy(text,msg){try{if(!navigator.clipboard)throw Error();await navigator.clipboard.writeText(text);toast(msg)}catch{document.getElementById('share-copy').value=text;document.getElementById('share-dialog').showModal();document.getElementById('share-copy').select()}}
+document.getElementById('copy-again').onclick=()=>{const t=document.getElementById('share-copy');t.select();try{if(document.execCommand('copy')){toast('복사했어요.');document.getElementById('share-dialog').close()}else toast('텍스트를 길게 눌러 복사해 주세요.')}catch{toast('텍스트를 길게 눌러 복사해 주세요.')}};
+async function share(){let text=shareText();try{if(navigator.share){let file=new File([await cardBlob()],`감독일지-${endingId()+1}.png`,{type:'image/png'});if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:TITLE,text:text.replace(resultUrl(),''),url:resultUrl()})}else await navigator.share({title:TITLE,text:text.replace(resultUrl(),''),url:resultUrl()});return}}catch(e){if(e.name==='AbortError')return}await copy(text,'결과와 링크를 복사했어요. 친구에게 보내주세요.')}
+function wrap(ctx,text,x,y,width,line){
+ let buf='';
+ for(const word of text.split(/\s+/)){
+  const next=buf?buf+' '+word:word;
+  if(ctx.measureText(next).width>width&&buf){ctx.fillText(buf,x,y);y+=line;buf=word}else buf=next;
+ }
+ if(buf)ctx.fillText(buf,x,y);
+ return y+line;
+}
+async function cardBlob(){
+ await document.fonts.ready;
+ const c=document.createElement('canvas');c.width=1080;c.height=1350;
+ const ctx=c.getContext('2d'),o=current();
+ ctx.fillStyle='#f5f2e9';ctx.fillRect(0,0,1080,1350);ctx.fillStyle='#fffdf5';ctx.fillRect(65,70,950,1200);ctx.strokeStyle='#d0d4c5';ctx.lineWidth=3;ctx.strokeRect(65,70,950,1200);
+ ctx.fillStyle='#e95337';for(let x=65;x<1000;x+=55)ctx.fillRect(x,70,30,8);
+ ctx.fillStyle='#747c70';ctx.font='700 28px GameSans, sans-serif';ctx.fillText(TITLE,115,150);ctx.font='500 24px GameSans, sans-serif';ctx.fillText(`결말 ${String(endingId()+1).padStart(2,'0')} / 72`,810,150);
+ ctx.strokeStyle='#d9ddce';ctx.beginPath();ctx.moveTo(115,190);ctx.lineTo(965,190);ctx.stroke();
+ ctx.fillStyle='#233331';ctx.font='900 64px GameSans, sans-serif';let y=wrap(ctx,o.title,115,280,840,80);
+ ctx.save();ctx.translate(815,y+32);ctx.rotate(-.12);ctx.strokeStyle='#e95337';ctx.lineWidth=5;ctx.strokeRect(-125,-40,250,80);ctx.fillStyle='#e95337';ctx.font='900 44px GameSans, sans-serif';ctx.textAlign='center';ctx.fillText('고소 엔딩',0,16);ctx.restore();
+ y=Math.max(y+115,480);ctx.fillStyle='#747c70';ctx.font='700 24px GameSans, sans-serif';ctx.fillText('내가 한 행동 · '+activeScenario.label,115,y);y+=42;
+ ctx.fillStyle='#233331';ctx.font='800 32px GameSans, sans-serif';y=wrap(ctx,o.evidence,115,y,830,46);y+=30;
+ ctx.fillStyle='#747c70';ctx.font='700 24px GameSans, sans-serif';ctx.fillText('접수된 고소 사유',115,y);y+=50;
+ ctx.fillStyle='#e95337';ctx.font='900 43px GameSans, sans-serif';y=wrap(ctx,o.charge,115,y,840,60);y+=20;
+ ctx.fillStyle='#747c70';ctx.font='500 27px GameSans, sans-serif';y=wrap(ctx,o.reply,115,y,830,40);y+=30;
+ ctx.fillStyle='#233331';ctx.font='800 28px GameSans, sans-serif';y=wrap(ctx,FINALS[final].quote,115,y,830,40);y+=8;
+ ctx.fillStyle='#747c70';ctx.font='500 23px GameSans, sans-serif';wrap(ctx,FINALS[final].note,115,y,830,33);
+ ctx.fillStyle='#233331';ctx.font='700 31px GameSans, sans-serif';ctx.fillText('너라면 어떻게 할래?',115,1205);ctx.fillStyle='#747c70';ctx.font='500 22px GameSans, sans-serif';ctx.fillText('이 게임의 인물과 사건은 모두 허구입니다.',115,1240);
+ return new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('이미지 생성 실패')),'image/png'));
+}
+async function save(){try{let blob=await cardBlob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`27년도-수능-감독관-결말-${endingId()+1}.png`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);toast('결과 카드를 저장했어요. 친구에게 보내 보세요.')}catch{toast('결과 카드를 저장하지 못했어요. 링크로 공유해 주세요.')}}
+document.addEventListener('keydown',e=>{if(e.target.matches('textarea,input')||document.querySelector('dialog[open]'))return;if(/^[1-4]$/.test(e.key))app.querySelector(`[data-choice="${Number(e.key)-1}"]`)?.click()});
+function roam(){phase='roam';mount('<section class="roam-heading"><span class="eyebrow"><span class="dot"></span> 2027학년도 · 제03시험실</span><h1>27년도 수능<br><em>감독관의 삶</em></h1><p>화면을 밀어서 둘러보고, 머리 위에 수능냥이가 뜬 학생을 눌러 보세요.</p></section>');}
+window.addEventListener('inspect-student',e=>{if(phase==='roam'){setScenario(e.detail?.id||activeScenario.id);initial()}});
+const originalHome=home;
+home=function(){originalHome();document.getElementById('start').onclick=()=>{started=Date.now();beep();roam()}};
+home();
