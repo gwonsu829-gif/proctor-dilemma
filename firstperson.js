@@ -1,6 +1,28 @@
 import * as THREE from './three.module.js';
 import {createProctorEnding} from './ending.js';
-import {renderer,scene,camera,proctor,students,suspect,marker,bubble,label,hands,colliders,setSuspect,animateClues} from './world.js';
+import {renderer,scene,camera,proctor,students,suspect,marker,bubble,label,hands,colliders,setSuspect,animateClues,nyangTags} from './world.js';
+// Lawsuit beat before the collapse: the accuser jumps up screaming and the complaint slams onto the screen.
+const slam=document.createElement('div');slam.id='slam';slam.hidden=true;slam.setAttribute('aria-hidden','true');
+slam.innerHTML='<div class="slam-flash"></div><div class="slam-shout">으아아악!!</div><div class="slam-doc"><h3>고 소 장</h3><dl><dt>고소인</dt><dd class="slam-who"></dd><dt>피고소인</dt><dd>시험 감독관 (나)</dd><dt>고소 사유</dt><dd class="slam-why"></dd></dl><small>2027. 11. 19. 제03시험실</small><b class="slam-seal">고소<i>접수</i></b></div>';
+document.body.append(slam);
+let ramp=null;
+function sfx(name,volume=1){if(document.getElementById('sound')?.getAttribute('aria-pressed')!=='true')return;try{const a=new Audio(`sfx/${name}.mp3`);a.volume=volume;a.play().catch(()=>{})}catch{}}
+function neighbour(s){const i=students.indexOf(s);return students[i%4<3?i+1:i-1]||s}
+function startRampage(){
+ stopRampage();
+ const who=currentBranch===3?neighbour(suspect):suspect,tag=nyangTags.find(m=>Math.abs(m.position.x-who.position.x)<.1&&Math.abs(m.position.z-who.position.z)<.1);
+ slam.querySelector('.slam-who').textContent=currentBranch===3?'옆자리 학생':(typeof BRANCHES!=='undefined'&&BRANCHES[0]?.speaker)||'수능냥이';
+ slam.querySelector('.slam-why').textContent=document.querySelector('.document .charge')?.textContent||'부당한 감독';
+ ramp={who,tag,tagY:tag?.position.y,baseY:who.position.y,start:performance.now()};
+ document.body.classList.add('ending-playing');slam.hidden=false;slam.classList.remove('go');void slam.offsetWidth;slam.classList.add('go');
+ sfx('scream');sfx('stamp',.9);ramp.seal=setTimeout(()=>sfx('stamp',.7),380);
+ ramp.timer=setTimeout(()=>{stopRampage();if(phase==='result')ending.start()},1900);
+}
+function stopRampage(){if(!ramp)return;clearTimeout(ramp.timer);clearTimeout(ramp.seal);const w=ramp.who;w.position.y=ramp.baseY;w.rotation.z=0;w.children[5].rotation.z=w.children[6].rotation.z=0;w.children[7].visible=w.children[8].visible=true;if(ramp.tag)ramp.tag.position.y=ramp.tagY;slam.hidden=true;ramp=null}
+function rampTick(t){if(!ramp)return;bubble.visible=false;const l=Math.max(0,(t-ramp.start)/1000),w=ramp.who,up=Math.min(1,l/.2),f=Math.sin(l*26),rise=.42*up+Math.abs(f)*.07*up;
+ w.position.y=ramp.baseY+rise;w.rotation.z=Math.sin(l*17)*.14*up;w.children[5].rotation.z=-2.5*up+f*.6;w.children[6].rotation.z=2.5*up-Math.sin(l*26+1.3)*.6;w.children[7].visible=w.children[8].visible=up<.5;if(ramp.tag)ramp.tag.position.y=ramp.tagY+rise;
+ targetYaw=Math.atan2(w.position.x-eye.x,w.position.z-eye.z);targetPitch=-.16;
+ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){const k=Math.max(0,1-l/.45)*.06;camera.position.x+=(Math.random()-.5)*k;camera.position.y+=(Math.random()-.5)*k}}
 const canvas=renderer.domElement,eye=new THREE.Vector3(-.8,1.95,-5.85),targetEye=eye.clone();
 let yaw=.16,pitch=-.065,targetYaw=yaw,targetPitch=pitch,phase='home',moving=false,route=[],keys=new Set(),joy={x:0,y:0},drag=null,last=0,walkTime=0,currentBranch=0,scenario={id:'glasses',student:6,clue:'정답은 ③입니다'};
 const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();
@@ -20,12 +42,12 @@ const j=document.getElementById('joystick'),stick=document.getElementById('stick
 function updateJoy(e){let r=j.getBoundingClientRect(),x=e.clientX-r.x-r.width/2,y=e.clientY-r.y-r.height/2,n=Math.hypot(x,y);if(n>28){x*=28/n;y*=28/n}joy={x:x/28,y:y/28};stick.style.transform=`translate(${x}px,${y}px)`;moving=false;route=[]}
 j.onpointerdown=e=>{joyId=e.pointerId;j.setPointerCapture(e.pointerId);updateJoy(e)};j.onpointermove=e=>{if(joyId===e.pointerId)updateJoy(e)};function release(){joyId=null;joy={x:0,y:0};stick.style.transform='translate(0,0)'}j.onpointerup=release;j.onpointercancel=release;
 addEventListener('keydown',e=>{if(phase==='roam'&&['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase())){keys.add(e.key.toLowerCase());e.preventDefault()}});addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));addEventListener('blur',()=>{keys.clear();release()});
-window.addEventListener('view-state',e=>{phase=e.detail.phase;currentBranch=e.detail.branch;keys.clear();release();hud.classList.toggle('active',phase==='roam');if(phase==='home')resetPosition();if(phase==='roam'){resetPosition();speak('시험 시작. 이제 내가 감독할 차례다.')}if(phase==='middle'){if(currentBranch===0||currentBranch===1){plan(suspect.position.x+1.5,suspect.position.z-2.3)}else{moving=false;route=[]}}if(phase==='result'){moving=false;route=[];ending.start()}else ending.stop();let t=phase==='result'?'고소장 접수 완료':phase==='last'?'하신 말씀도 적어 둘게요.':phase==='middle'?(scenario.reactions?.[currentBranch]||'왜 저만 확인하세요?'):scenario.clue;bubble.material.dispose();bubble.material=label(t,512,128,phase==='result'?'#e95337':'#f9d561',phase==='result'?'#fff9e8':'#304b43',34)});
+window.addEventListener('view-state',e=>{phase=e.detail.phase;currentBranch=e.detail.branch;keys.clear();release();hud.classList.toggle('active',phase==='roam');if(phase==='home')resetPosition();if(phase==='roam'){resetPosition();speak('시험 시작. 이제 내가 감독할 차례다.')}if(phase==='middle'){if(currentBranch===0||currentBranch===1){plan(suspect.position.x+1.5,suspect.position.z-2.3)}else{moving=false;route=[]}}if(phase==='result'){moving=false;route=[];startRampage()}else{stopRampage();ending.stop()}let t=phase==='result'?'고소장 접수 완료':phase==='last'?'하신 말씀도 적어 둘게요.':phase==='middle'?(scenario.reactions?.[currentBranch]||'왜 저만 확인하세요?'):scenario.clue;bubble.material.dispose();bubble.material=label(t,512,128,phase==='result'?'#e95337':'#f9d561',phase==='result'?'#fff9e8':'#304b43',34)});
 function animate(t){requestAnimationFrame(animate);let dt=Math.min((t-last)/1000,.045);last=t;if(phase==='result'&&ending.update(t,dt)){animateClues(t);renderer.render(scene,camera);return;}let dx=0,dz=0,vx=joy.x,vy=-joy.y;if(keys.has('w')||keys.has('arrowup'))vy++;if(keys.has('s')||keys.has('arrowdown'))vy--;if(keys.has('a')||keys.has('arrowleft'))vx--;if(keys.has('d')||keys.has('arrowright'))vx++;if(phase==='roam'&&(vx||vy)){moving=false;dx=-Math.cos(yaw)*vx+Math.sin(yaw)*vy;dz=Math.sin(yaw)*vx+Math.cos(yaw)*vy}else if(moving){dx=targetEye.x-eye.x;dz=targetEye.z-eye.z;if(Math.hypot(dx,dz)<.16){if(route.length)targetEye.copy(route.shift());else moving=false;dx=dz=0}}let len=Math.hypot(dx,dz);if(len>.01){dx/=len;dz/=len;let nx=eye.x+dx*dt*2.65,nz=eye.z+dz*dt*2.65;if(canMove(nx,eye.z))eye.x=nx;if(canMove(eye.x,nz))eye.z=nz;walkTime+=dt*10}else walkTime*=.95;
  if(['initial','middle','last'].includes(phase)){targetYaw=Math.atan2(suspect.position.x-eye.x,suspect.position.z-eye.z);// Aim below the face so the 수능냥이 stays visible in the upper part of the screen, above the choice panel.
  const face=suspect.position.y+1.76*.85,d=Math.hypot(suspect.position.x-eye.x,suspect.position.z-eye.z);targetPitch=Math.atan2(face-1.95,d)-.3}
  yaw=THREE.MathUtils.lerp(yaw,targetYaw,.12);pitch=THREE.MathUtils.lerp(pitch,targetPitch,.12);camera.position.copy(eye);camera.position.y+=len>.01?Math.sin(walkTime)*.028:Math.sin(t*.0015)*.006;camera.lookAt(eye.x+Math.sin(yaw)*10,camera.position.y+Math.sin(pitch)*10,eye.z+Math.cos(yaw)*10);
- hands.position.y=(len>.01?Math.sin(walkTime)*.013:Math.sin(t*.0015)*.008);hands.visible=phase!=='result';bubble.visible=phase!=='middle'&&phase!=='last';bubble.quaternion.copy(camera.quaternion);bubble.position.y=2.6+Math.sin(t*.002)*.04;marker.position.y=3.35+Math.sin(t*.003)*.1;marker.rotation.y=t*.001;animateClues(t);renderer.render(scene,camera)}requestAnimationFrame(animate);
+ hands.position.y=(len>.01?Math.sin(walkTime)*.013:Math.sin(t*.0015)*.008);hands.visible=phase!=='result';bubble.visible=phase!=='middle'&&phase!=='last';bubble.quaternion.copy(camera.quaternion);bubble.position.y=2.6+Math.sin(t*.002)*.04;marker.position.y=3.35+Math.sin(t*.003)*.1;marker.rotation.y=t*.001;animateClues(t);rampTick(t);renderer.render(scene,camera)}requestAnimationFrame(animate);
 document.fonts.ready.then(()=>{let el=document.getElementById('world-loading');el.setAttribute('aria-hidden','true');el.classList.add('loaded');setTimeout(()=>el.style.display='none',550)});
 
 hud.querySelectorAll('[data-incident]').forEach(el=>el.onclick=()=>{window.chooseScenario(el.dataset.incident);targetYaw=Math.atan2(suspect.position.x-eye.x,suspect.position.z-eye.z);targetPitch=-.065;});
